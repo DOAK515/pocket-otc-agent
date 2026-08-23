@@ -21,6 +21,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install requests pandas
+          pip install git+https://github.com/twopirllc/pandas-ta.git
 
       - name: Run bot
         run: python bot.py
