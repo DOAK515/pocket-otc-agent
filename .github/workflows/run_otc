@@ -19,9 +19,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install requests pandas
-          pip install pandas-ta
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir pandas pandas-ta requests
 
       - name: Run bot
         run: python bot.py
