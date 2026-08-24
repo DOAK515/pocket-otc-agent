@@ -1,14 +1,14 @@
 import time
 import requests
 import pandas as pd
-import yfinance as yf  # update
+import yfinance as yf
 
-print("Bot started successfully...")
+print("Bot is running successfully...")
 
-def main():
+def run():
     while True:
-        print("Running bot check...")
-        time.sleep(60)
+        print("Checking market...")
+        time.sleep(30)
 
 if __name__ == "__main__":
-    main()
+    run()
