@@ -1,8 +1,7 @@
 import time
 import requests
 import pandas as pd
-import yfinance as yf
-
+import yfinance as yf  # update
 # ----------------- إعدادات الوكيل الثاني (OTC) -----------------
 TELEGRAM_BOT_TOKEN = "7983033116:AAGbLkQZZp0VgLeudB9xF2nEL2Ln00cFJQo"  # يمكنك استخدام نفس البوت أو بوت جديد
 TELEGRAM_CHAT_ID = "-1002873715505"     # يمكنك وضع Chat ID خاص بقناة الـ OTC
