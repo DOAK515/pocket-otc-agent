@@ -1,9 +1,9 @@
-name: Run Stock Market Bot
+name: Run OTC Bot
 
 on:
   schedule:
-    - cron: '0 * * * *'  # يعمل تلقائياً كل ساعة
-  workflow_dispatch:      # يتيح لك تشغيله يدوياً متى شئت
+    - cron: '0 * * * *'  # يعمل تلقائياً مع بداية كل ساعة جديدة
+  workflow_dispatch:      # لكي تستطيع تشغيله يدوياً متى شئت
 
 jobs:
   build:
@@ -21,8 +21,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install requests pandas yfinance pytz matplotlib
 
-    - name: Run Bot
+    - name: Run bot
       run: |
         python bot.py
