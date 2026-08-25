@@ -3,7 +3,7 @@ name: Run Stock Market Bot
 on:
   schedule:
     - cron: '0 * * * *'  # يعمل تلقائياً كل ساعة
-  workflow_dispatch:      # يتيح لك تشغيله يدوياً متى شئت من زر Action
+  workflow_dispatch:      # يتيح لك تشغيله يدوياً متى شئت
 
 jobs:
   build:
@@ -20,7 +20,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m pkg_resources || pip install --upgrade pip
+        python -m pip install --upgrade pip
         pip install -r requirements.txt
 
     - name: Run Bot
