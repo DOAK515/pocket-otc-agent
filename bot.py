@@ -46,8 +46,16 @@ def get_turkey_time():
     turkey_tz = timezone(timedelta(hours=3))
     return datetime.now(turkey_tz)
 
+def is_market_open():
+    """التحقق مما إذا كان سوق الفوركس الحقيقي مفتوحاً (يغلق السبت والأحد)"""
+    now = get_turkey_time()
+    weekday = now.weekday() # 0=الإثنين ... 5=السبت، 6=الأحد
+    # السوق يغلق مساء الجمعة ويفتح فجر الإثنين
+    if weekday == 5 or weekday == 6:
+        return False
+    return True
+
 def fetch_real_market_data():
-    """سحب بيانات السوق الحقيقي (فريم 5 دقائق)"""
     try:
         url = "https://query1.finance.yahoo.com/v8/finance/chart/EURUSD=X?interval=5m&range=1d"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -74,7 +82,7 @@ def fetch_real_market_data():
         df['high'] = df[['open', 'close']].max(axis=1) + 0.0001
         df['low'] = df[['open', 'close']].min(axis=1) - 0.0001
         
-    # حساب المؤشرات الأربعة
+    # حساب المؤشرات الأربعة لضمان دقة وقوة الصفقة
     df['EMA_Fast'] = df['close'].ewm(span=5).mean()
     df['EMA_Slow'] = df['close'].ewm(span=12).mean()
     
@@ -91,6 +99,7 @@ def fetch_real_market_data():
 
 def analyze_signals(df):
     last = df.iloc[-1]
+    # اشتراط توافق المؤشرات الأربعة معاً لضمان قوة الصفقة
     if last['EMA_Fast'] > last['EMA_Slow'] and last['RSI'] > 53 and last['ROC'] > 0 and last['Momentum'] > 0:
         return "CALL", last['close']
     elif last['EMA_Fast'] < last['EMA_Slow'] and last['RSI'] < 47 and last['ROC'] < 0 and last['Momentum'] < 0:
@@ -98,7 +107,6 @@ def analyze_signals(df):
     return None, last['close']
 
 def generate_chart_image(df, title):
-    """رسم شارت حقيقي احترافي مع مؤشر RSI"""
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 5), gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
     bg_color = '#121824'
     grid_color = '#1e2636'
@@ -106,7 +114,6 @@ def generate_chart_image(df, title):
     ax1.set_facecolor(bg_color)
     ax2.set_facecolor(bg_color)
     
-    # رسم الشموع اليابانية (أخضر وأحمر)
     for i in range(len(df)):
         o = df['open'].iloc[i]
         c = df['close'].iloc[i]
@@ -120,7 +127,6 @@ def generate_chart_image(df, title):
     ax1.tick_params(colors='#8b949e', labelsize=8)
     ax1.grid(True, color=grid_color, alpha=0.7)
     
-    # مؤشر RSI في الأسفل
     ax2.plot(df['RSI'].values, color='#00e5ff', linewidth=1.2)
     ax2.axhline(70, color='#ff5252', linestyle='--', alpha=0.7)
     ax2.axhline(50, color='#ffeb3b', linestyle='-', alpha=0.5)
@@ -142,14 +148,28 @@ total_losses = 0
 
 def main():
     global total_wins, total_losses
-    send_telegram_message("🚀 بدء عمل بوت السوق الحقيقي (EUR/USD - فريم 5 دقائق مع الشارتات والنتائج)")
+    send_telegram_message("🚀 بوت أبو خالد للسوق الحقيقي مفعل (يتوقف تلقائياً العطلة الأسبوعية ويعمل فور افتتاح السوق)")
     
+    market_was_closed = False
+
     while True:
         try:
+            # 1. فحص هل السوق مغلق (عطلة السبت والأحد)
+            if not is_market_open():
+                if not market_was_closed:
+                    send_telegram_message("⏸ **السوق مغلق حالياً (عطلة نهاية الأسبوع - السبت والأحد)**\nيتوقف البوت مؤقتاً وسيتم إعلامك فور افتتاحه واستئناف العمل.")
+                    market_was_closed = True
+                time.sleep(1800) # فحص كل نصف ساعة خلال العطلة
+                continue
+            else:
+                if market_was_closed:
+                    send_telegram_message("🟢 **تم افتتحاح السوق وعودة العمل رسمياً!**\nالبوت يبحث الآن عن فرص قوية.")
+                    market_was_closed = False
+
+            # 2. سحب وتحليل بيانات السوق الحقيقي
             df = fetch_real_market_data()
             signal, current_price = analyze_signals(df)
             
-            # الانتظار بهدوء حتى تتفق المؤشرات وتظهر فرصة قوية
             if not signal:
                 time.sleep(60)
                 continue
@@ -157,15 +177,15 @@ def main():
             now_tr = get_turkey_time()
             entry_time = now_tr + timedelta(minutes=2)
             
-            # توليد صورة الشارت قبل الدخول
+            # 3. إرسال الشارت قبل الصفقة بدقيقتين
             chart_img = generate_chart_image(df, f"EUR/USD M5 | Signal: {signal}")
             
             alert_msg = (
-                f"🚨 **تنبيه صفقة سوق حقيقي قوية** 🚨\n"
+                f"🚨 **تنبيه صفقة سوق حقيقي قوية جداً** 🚨\n"
                 f"──────────────────────\n"
-                f"💱 **الزوج:** EUR/USD (MetaTrader / Forex)\n"
+                f"💱 **الزوج:** EUR/USD (حقيقي)\n"
                 f"📈 **الاتجاه:** {'صعود (CALL) 🟢' if signal == 'CALL' else 'هبوط (PUT) 🔴'}\n"
-                f"💎 **الحالة:** مؤشرات الزخم الأربعة متوافقة\n"
+                f"💎 **الحالة:** توافق المؤشرات الأربعة بنجاح\n"
                 f"⏳ **وقت الدخول (بتوقيت تركيا):** {entry_time.strftime('%H:%M')}\n"
                 f"⏱ **مدة الصفقة:** 5 دقائق\n"
                 f"📍 **سعر الدخول:** {current_price:.5f}\n"
@@ -173,10 +193,10 @@ def main():
             )
             send_telegram_photo(chart_img, caption=alert_msg)
             
-            # الانتظار طوال مدة الصفقة (7 دقائق: 2 تجهيز + 5 عمر الصفقة)
+            # 4. الانتظار طوال عمر الصفقة (7 دقائق: 2 تجهيز + 5 دقائق إغلاق الشمعة)
             time.sleep(420)
             
-            # جلب البيانات الجديدة لفحص نتيجة الإغلاق
+            # 5. جلب السعر عند الإغلاق وتحديد النتيجة بدون مضاعفات
             df_end = fetch_real_market_data()
             end_price = df_end['close'].iloc[-1]
             
@@ -190,8 +210,6 @@ def main():
                 res_text = "❌ خاسرة (LOSS)"
                 
             end_tr = get_turkey_time()
-            
-            # توليد صورة شارت النتيجة النهائية
             result_chart_img = generate_chart_image(df_end, f"Result: {res_text}")
             
             result_msg = (
