@@ -1,7 +1,4 @@
-requests
 pandas
 numpy
-yfinance
-pytz
 matplotlib
-pandas-ta
+requests
