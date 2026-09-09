@@ -54,8 +54,7 @@ def is_market_open():
         return False
     return True
 
-def fetch_strict_market_data():
-    """سحب بيانات دقيقة ومتوافقة مع الشموع الحقيقية"""
+def fetch_market_data():
     try:
         url = "https://query1.finance.yahoo.com/v8/finance/chart/EURUSD=X?interval=5m&range=1d"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -81,9 +80,8 @@ def fetch_strict_market_data():
         df['high'] = df[['open', 'close']].max(axis=1) + 0.00008
         df['low'] = df[['open', 'close']].min(axis=1) - 0.00008
 
-    # المؤشرات الفنية بفلترة قوية جداً لتقليل الخسائر
-    df['EMA_Fast'] = df['close'].ewm(span=5).mean()
-    df['EMA_Slow'] = df['close'].ewm(span=13).mean()
+    df['Support'] = df['low'].rolling(window=20).min()
+    df['Resistance'] = df['high'].rolling(window=20).max()
     
     delta = df['close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -92,48 +90,63 @@ def fetch_strict_market_data():
     df['RSI'] = 100 - (100 / (1 + rs))
     df['RSI'] = df['RSI'].fillna(50)
     
-    df['ROC'] = df['close'].pct_change(periods=3) * 100
-    df['Momentum'] = df['close'] - df['close'].shift(3)
     return df
 
-def analyze_strict_signals(df):
+def analyze_support_resistance_signals(df):
     last = df.iloc[-1]
-    # شروط صارمة جداً لرفع نسبة النجاح وتجنب الإشارات الضعيفة
-    if last['EMA_Fast'] > last['EMA_Slow'] and last['RSI'] > 56 and last['ROC'] > 0.02 and last['Momentum'] > 0:
-        return "CALL", last['close']
-    elif last['EMA_Fast'] < last['EMA_Slow'] and last['RSI'] < 44 and last['ROC'] < -0.02 and last['Momentum'] < 0:
-        return "PUT", last['close']
-    return None, last['close']
+    prev = df.iloc[-2]
+    
+    current_price = last['close']
+    support_level = last['Support']
+    resistance_level = last['Resistance']
+    
+    near_support = abs(current_price - support_level) <= 0.00015
+    if (near_support or current_price <= support_level * 1.0002) and last['RSI'] < 40 and last['close'] > prev['close']:
+        return "CALL", current_price
+        
+    near_resistance = abs(current_price - resistance_level) <= 0.00015
+    if (near_resistance or current_price >= resistance_level * 0.9998) and last['RSI'] > 60 and last['close'] < prev['close']:
+        return "PUT", current_price
+        
+    return None, current_price
 
 def generate_chart_image(df, title):
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 5), gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
+    """رسم شارت الشموع المتلاصقة والواضحة تماماً مثل منصات التداول الاحترافية"""
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 4.5), gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
     bg_color = '#121824'
     grid_color = '#1e2636'
     fig.patch.set_facecolor(bg_color)
     ax1.set_facecolor(bg_color)
     ax2.set_facecolor(bg_color)
     
+    # جعل الشموع متلاصقة وواضحة (عرض الشمعة 0.9 لتتلاصق تماماً)
     for i in range(len(df)):
         o = df['open'].iloc[i]
         c = df['close'].iloc[i]
         h = df['high'].iloc[i]
         l = df['low'].iloc[i]
         color = '#00c853' if c >= o else '#ff5252'
-        ax1.plot([i, i], [l, h], color=color, linewidth=1.2, zorder=1)
-        ax1.bar(i, abs(c - o), bottom=min(o, c), color=color, width=0.7, zorder=2)
+        ax1.plot([i, i], [l, h], color=color, linewidth=1.0, zorder=1)
+        ax1.bar(i, abs(c - o), bottom=min(o, c), color=color, width=0.9, zorder=2)
 
-    ax1.set_title(title, fontsize=11, color='white', fontweight='bold', pad=10)
+    sup_val = df['Support'].iloc[-1]
+    res_val = df['Resistance'].iloc[-1]
+    ax1.axhline(sup_val, color='#00e5ff', linestyle='--', alpha=0.7, label='Support')
+    ax1.axhline(res_val, color='#ff9100', linestyle='--', alpha=0.7, label='Resistance')
+
+    ax1.set_title(title, fontsize=10, color='white', fontweight='bold', pad=8)
     ax1.tick_params(colors='#8b949e', labelsize=8)
-    ax1.grid(True, color=grid_color, alpha=0.7)
+    ax1.grid(True, color=grid_color, alpha=0.5)
+    ax1.legend(loc='upper left', facecolor='#121824', edgecolor='none', labelcolor='white', fontsize=7)
     
     ax2.plot(df['RSI'].values, color='#00e5ff', linewidth=1.2)
-    ax2.axhline(70, color='#ff5252', linestyle='--', alpha=0.7)
-    ax2.axhline(50, color='#ffeb3b', linestyle='-', alpha=0.5)
-    ax2.axhline(30, color='#00c853', linestyle='--', alpha=0.7)
-    ax2.set_ylabel('RSI', color='#8b949e', fontsize=8)
+    ax2.axhline(70, color='#ff5252', linestyle='--', alpha=0.5)
+    ax2.axhline(50, color='#ffeb3b', linestyle='-', alpha=0.3)
+    ax2.axhline(30, color='#00c853', linestyle='--', alpha=0.5)
+    ax2.set_ylabel('RSI', color='#8b949e', fontsize=7)
     ax2.set_ylim(0, 100)
     ax2.tick_params(colors='#8b949e', labelsize=8)
-    ax2.grid(True, color=grid_color, alpha=0.7)
+    ax2.grid(True, color=grid_color, alpha=0.5)
 
     plt.tight_layout()
     buf = io.BytesIO()
@@ -142,12 +155,12 @@ def generate_chart_image(df, title):
     plt.close()
     return buf.read()
 
-total_wins = 10  # يبدأ من الأرقام الحالية التي ذكرتها لتستمر الإحصائية بدقة
-total_losses = 15
+total_wins = 11
+total_losses = 20
 
 def main():
     global total_wins, total_losses
-    send_telegram_message("🚀 بوت أبو خالد المطور للتحليل القوي والفلترة العالية يعمل الآن.")
+    send_telegram_message("🎯 بوت تداول الدعوم والمقاومات (الشموع المتلاصقة والواضحة) يعمل الآن.")
     
     market_was_closed = False
 
@@ -155,17 +168,17 @@ def main():
         try:
             if not is_market_open():
                 if not market_was_closed:
-                    send_telegram_message("⏸ **السوق مغلق حالياً (عطلة نهاية الأسبوع)**\nالبوت متوقف مؤقتاً.")
+                    send_telegram_message("⏸ **السوق مغلق حالياً (عطلة نهاية الأسبوع)**")
                     market_was_closed = True
                 time.sleep(1800)
                 continue
             else:
                 if market_was_closed:
-                    send_telegram_message("🟢 **تم افتتحاح السوق وعودة البوت للعمل بنجاح!**")
+                    send_telegram_message("🟢 **تم افتتحاح السوق واستئناف التداول!**")
                     market_was_closed = False
 
-            df = fetch_strict_market_data()
-            signal, current_price = analyze_strict_signals(df)
+            df = fetch_market_data()
+            signal, current_price = analyze_support_resistance_signals(df)
             
             if not signal:
                 time.sleep(60)
@@ -174,25 +187,24 @@ def main():
             now_tr = get_turkey_time()
             entry_time = now_tr + timedelta(minutes=2)
             
-            chart_img = generate_chart_image(df, f"EUR/USD | Signal: {signal}")
+            chart_img = generate_chart_image(df, f"EUR/USD | S/R Signal: {signal}")
             
             alert_msg = (
-                f"🚨 **إشارة سوق حقيقي قوية (فلترة عالية)** 🚨\n"
+                f"🚨 **إشارة ارتداد قوية من دعم/مقاومة** 🚨\n"
                 f"──────────────────────\n"
                 f"💱 **الزوج:** EUR/USD (حقيقي)\n"
                 f"📈 **القرار:** {'شراء / صعود (CALL) 🟢' if signal == 'CALL' else 'بيع / هبوط (PUT) 🔴'}\n"
                 f"⏳ **وقت الدخول:** {entry_time.strftime('%H:%M')}\n"
                 f"⏱ **مدة الصفقة:** 5 دقائق\n"
                 f"📍 **سعر الدخول:** {current_price:.5f}\n"
-                f"🛡 **النظام:** بدون مضاعفات\n"
+                f"🛡 **النظام:** دعوم ومقاومات مؤكدة (شموع متلاصقة)\n"
                 f"──────────────────────"
             )
             send_telegram_photo(chart_img, caption=alert_msg)
             
-            # الانتظار لعمر الصفقة (7 دقائق)
             time.sleep(420)
             
-            df_end = fetch_strict_market_data()
+            df_end = fetch_market_data()
             end_price = df_end['close'].iloc[-1]
             
             is_win = (end_price >= current_price) if signal == "CALL" else (end_price <= current_price)
