@@ -80,15 +80,12 @@ def fetch_market_data():
         df['high'] = df[['open', 'close']].max(axis=1) + 0.00008
         df['low'] = df[['open', 'close']].min(axis=1) - 0.00008
 
-    # حساب مناطق الدعم والمقاومة بدقة (لفترة أطول لضمان قوة المنطقة)
     df['Support'] = df['low'].rolling(window=30).min()
     df['Resistance'] = df['high'].rolling(window=30).max()
     
-    # مؤشر المتوسط المتحرك EMA للتأكيد الاتجاهي
     df['EMA9'] = df['close'].ewm(span=9, adjust=False).mean()
     df['EMA21'] = df['close'].ewm(span=21, adjust=False).mean()
 
-    # مؤشر القوة النسبية RSI
     delta = df['close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -106,16 +103,14 @@ def analyze_advanced_strategy(df):
     support = last['Support']
     resistance = last['Resistance']
     
-    # فلترة قوية للشراء (CALL): اقتراب من الدعم + RSI في تشبع بيعي + تقاطع إيجابي لـ EMA + شمعة صاعدة مؤكدة
-    near_support = abs(current_price - support) <= 0.00018
+    near_support = abs(current_price - support) <= 0.00025
     is_bullish_confirm = last['close'] > prev['close'] and last['EMA9'] > last['EMA21']
-    if near_support and last['RSI'] < 38 and is_bullish_confirm:
+    if near_support and last['RSI'] < 45 and is_bullish_confirm:
         return "CALL", current_price
         
-    # فلترة قوية للبيع (PUT): اقتراب من المقاومة + RSI في تشبع شرائي + تقاطع سلبي لـ EMA + شمعة هابطة مؤكدة
-    near_resistance = abs(current_price - resistance) <= 0.00018
+    near_resistance = abs(current_price - resistance) <= 0.00025
     is_bearish_confirm = last['close'] < prev['close'] and last['EMA9'] < last['EMA21']
-    if near_resistance and last['RSI'] > 62 and is_bearish_confirm:
+    if near_resistance and last['RSI'] > 55 and is_bearish_confirm:
         return "PUT", current_price
         
     return None, current_price
@@ -128,7 +123,6 @@ def generate_chart_image(df, title):
     ax1.set_facecolor(bg_color)
     ax2.set_facecolor(bg_color)
     
-    # رسم شموع متلاصقة وواضحة تماماً
     for i in range(len(df)):
         o = df['open'].iloc[i]
         c = df['close'].iloc[i]
@@ -169,7 +163,7 @@ total_losses = 20
 
 def main():
     global total_wins, total_losses
-    send_telegram_message("🎯 بوت الاستراتيجية المتقدمة (زوج EUR/USD + فلترة صارمة) يعمل الآن.")
+    send_telegram_message("🎯 بوت الاستراتيجية المتقدمة (EUR/USD) بدأ المراقبة النشطة للأسواق الآن...")
     
     while True:
         try:
@@ -182,16 +176,16 @@ def main():
             signal, current_price = analyze_advanced_strategy(df)
             
             if not signal:
-                time.sleep(45)
+                time.sleep(30) # فحص متواصل كل 30 ثانية بحثاً عن فرصة قوية
                 continue
                 
             now_tr = get_turkey_time()
             entry_time = now_tr + timedelta(minutes=2)
             
-            chart_img = generate_chart_image(df, f"EUR/USD | Advanced Signal: {signal}")
+            chart_img = generate_chart_image(df, f"EUR/USD | Signal: {signal}")
             
             alert_msg = (
-                f"🚨 **إشارة عالية الدقة (فلترة صارمة)** 🚨\n"
+                f"🚨 **إشارة عالية الدقة (منطقة قوية)** 🚨\n"
                 f"──────────────────────\n"
                 f"💱 **الزوج:** EUR/USD\n"
                 f"📈 **القرار:** {'شراء / صعود (CALL) 🟢' if signal == 'CALL' else 'بيع / هبوط (PUT) 🔴'}\n"
@@ -222,7 +216,7 @@ def main():
             result_chart_img = generate_chart_image(df_end, f"Result: {res_text}")
             
             result_msg = (
-                f"🏁 **تقرير نتيجة الصفقة المتقدمة**\n"
+                f"🏁 **تقرير نتيجة الصفقة**\n"
                 f"──────────────────────\n"
                 f"النتيجة: {res_text}\n"
                 f"📍 سعر الفتح: {current_price:.5f}\n"
@@ -235,7 +229,7 @@ def main():
             )
             send_telegram_photo(result_chart_img, caption=result_msg)
             
-            time.sleep(120)
+            time.sleep(60)
             
         except Exception as e:
             logging.error(f"Error in main loop: {e}")
