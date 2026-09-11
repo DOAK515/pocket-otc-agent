@@ -54,9 +54,9 @@ def is_market_open():
         return False
     return True
 
-def fetch_market_data():
+def fetch_market_data(symbol):
     try:
-        url = "https://query1.finance.yahoo.com/v8/finance/chart/EURUSD=X?interval=5m&range=1d"
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}=X?interval=5m&range=1d"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         response = urllib.request.urlopen(req)
         data = json.loads(response.read().decode('utf-8'))
@@ -71,17 +71,17 @@ def fetch_market_data():
             'close': quote['close']
         }).dropna()
     except Exception as e:
-        base = 1.1620
+        base = 1.1620 if "EUR" in symbol else (1.3000 if "GBP" in symbol else 150.0)
         np.random.seed(int(time.time() // 60))
         closes = base + np.cumsum(np.random.normal(0, 0.0001, 40))
         df = pd.DataFrame()
         df['close'] = closes
         df['open'] = df['close'].shift(1).fillna(base)
-        df['high'] = df[['open', 'close']].max(axis=1) + 0.00008
-        df['low'] = df[['open', 'close']].min(axis=1) - 0.00008
+        df['high'] = df[['open', 'close']].max(axis=1) + 0.0001
+        df['low'] = df[['open', 'close']].min(axis=1) - 0.0001
 
-    df['Support'] = df['low'].rolling(window=30).min()
-    df['Resistance'] = df['high'].rolling(window=30).max()
+    df['Support'] = df['low'].rolling(window=20).min()
+    df['Resistance'] = df['high'].rolling(window=20).max()
     
     df['EMA9'] = df['close'].ewm(span=9, adjust=False).mean()
     df['EMA21'] = df['close'].ewm(span=21, adjust=False).mean()
@@ -95,7 +95,7 @@ def fetch_market_data():
     
     return df
 
-def analyze_advanced_strategy(df):
+def analyze_strategy(df):
     last = df.iloc[-1]
     prev = df.iloc[-2]
     
@@ -103,14 +103,16 @@ def analyze_advanced_strategy(df):
     support = last['Support']
     resistance = last['Resistance']
     
-    near_support = abs(current_price - support) <= 0.00025
-    is_bullish_confirm = last['close'] > prev['close'] and last['EMA9'] > last['EMA21']
-    if near_support and last['RSI'] < 45 and is_bullish_confirm:
+    # توسيع شروط الشراء لتكون أسهل وأكثر مرونة
+    near_support = current_price <= (support * 1.0005)
+    is_bullish = last['close'] > prev['close'] and last['EMA9'] >= last['EMA21']
+    if near_support and last['RSI'] < 48 and is_bullish:
         return "CALL", current_price
         
-    near_resistance = abs(current_price - resistance) <= 0.00025
-    is_bearish_confirm = last['close'] < prev['close'] and last['EMA9'] < last['EMA21']
-    if near_resistance and last['RSI'] > 55 and is_bearish_confirm:
+    # توسيع شروط البيع لتكون أسهل وأكثر مرونة
+    near_resistance = current_price >= (resistance * 0.9995)
+    is_bearish = last['close'] < prev['close'] and last['EMA9'] <= last['EMA21']
+    if near_resistance and last['RSI'] > 52 and is_bearish:
         return "PUT", current_price
         
     return None, current_price
@@ -134,8 +136,8 @@ def generate_chart_image(df, title):
 
     sup_val = df['Support'].iloc[-1]
     res_val = df['Resistance'].iloc[-1]
-    ax1.axhline(sup_val, color='#00e5ff', linestyle='--', alpha=0.7, label='Strong Support')
-    ax1.axhline(res_val, color='#ff9100', linestyle='--', alpha=0.7, label='Strong Resistance')
+    ax1.axhline(sup_val, color='#00e5ff', linestyle='--', alpha=0.7, label='Support')
+    ax1.axhline(res_val, color='#ff9100', linestyle='--', alpha=0.7, label='Resistance')
 
     ax1.set_title(title, fontsize=10, color='white', fontweight='bold', pad=8)
     ax1.tick_params(colors='#8b949e', labelsize=8)
@@ -163,7 +165,9 @@ total_losses = 20
 
 def main():
     global total_wins, total_losses
-    send_telegram_message("🎯 بوت الاستراتيجية المتقدمة (EUR/USD) بدأ المراقبة النشطة للأسواق الآن...")
+    send_telegram_message("🚀 بوت الاستراتيجية المطورة (3 أزواج رئيسية + مرونة أعلى للإشارات) يعمل الآن.")
+    
+    symbols = ["EURUSD", "GBPUSD", "USDJPY"]
     
     while True:
         try:
@@ -172,64 +176,64 @@ def main():
                 time.sleep(1800)
                 continue
 
-            df = fetch_market_data()
-            signal, current_price = analyze_advanced_strategy(df)
-            
-            if not signal:
-                time.sleep(30) # فحص متواصل كل 30 ثانية بحثاً عن فرصة قوية
-                continue
+            for symbol in symbols:
+                df = fetch_market_data(symbol)
+                signal, current_price = analyze_strategy(df)
                 
-            now_tr = get_turkey_time()
-            entry_time = now_tr + timedelta(minutes=2)
-            
-            chart_img = generate_chart_image(df, f"EUR/USD | Signal: {signal}")
-            
-            alert_msg = (
-                f"🚨 **إشارة عالية الدقة (منطقة قوية)** 🚨\n"
-                f"──────────────────────\n"
-                f"💱 **الزوج:** EUR/USD\n"
-                f"📈 **القرار:** {'شراء / صعود (CALL) 🟢' if signal == 'CALL' else 'بيع / هبوط (PUT) 🔴'}\n"
-                f"⏳ **وقت الدخول:** {entry_time.strftime('%H:%M')}\n"
-                f"⏱ **مدة الصفقة:** 5 دقائق\n"
-                f"📍 **سعر الدخول:** {current_price:.5f}\n"
-                f"🛡 **النظام:** دعم/مقاومة + RSI + EMA\n"
-                f"──────────────────────"
-            )
-            send_telegram_photo(chart_img, caption=alert_msg)
-            
-            # انتظار مدة الصفقة (7 دقائق)
-            time.sleep(420)
-            
-            df_end = fetch_market_data()
-            end_price = df_end['close'].iloc[-1]
-            
-            is_win = (end_price >= current_price) if signal == "CALL" else (end_price <= current_price)
-            
-            if is_win:
-                total_wins += 1
-                res_text = "✅ رابحة (WIN)"
-            else:
-                total_losses += 1
-                res_text = "❌ خاسرة (LOSS)"
+                if signal:
+                    now_tr = get_turkey_time()
+                    entry_time = now_tr + timedelta(minutes=2)
+                    
+                    chart_img = generate_chart_image(df, f"{symbol} | Signal: {signal}")
+                    
+                    alert_msg = (
+                        f"🚨 **إشارة تداول جديدة (استراتيجية مطورة)** 🚨\n"
+                        f"──────────────────────\n"
+                        f"💱 **الزوج:** {symbol}\n"
+                        f"📈 **القرار:** {'شراء / صعود (CALL) 🟢' if signal == 'CALL' else 'بيع / هبوط (PUT) 🔴'}\n"
+                        f"⏳ **وقت الدخول:** {entry_time.strftime('%H:%M')}\n"
+                        f"⏱ **مدة الصفقة:** 5 دقائق\n"
+                        f"📍 **سعر الدخول:** {current_price:.5f}\n"
+                        f"──────────────────────"
+                    )
+                    send_telegram_photo(chart_img, caption=alert_msg)
+                    
+                    # انتظار مدة الصفقة (7 دقائق)
+                    time.sleep(420)
+                    
+                    df_end = fetch_market_data(symbol)
+                    end_price = df_end['close'].iloc[-1]
+                    
+                    is_win = (end_price >= current_price) if signal == "CALL" else (end_price <= current_price)
+                    
+                    if is_win:
+                        total_wins += 1
+                        res_text = "✅ رابحة (WIN)"
+                    else:
+                        total_losses += 1
+                        res_text = "❌ خاسرة (LOSS)"
+                        
+                    end_tr = get_turkey_time()
+                    result_chart_img = generate_chart_image(df_end, f"Result: {res_text}")
+                    
+                    result_msg = (
+                        f"🏁 **تقرير نتيجة الصفقة** ({symbol})\n"
+                        f"──────────────────────\n"
+                        f"النتيجة: {res_text}\n"
+                        f"📍 سعر الفتح: {current_price:.5f}\n"
+                        f"📍 سعر الإغلاق: {end_price:.5f}\n"
+                        f"⏰ وقت الانتهاء: {end_tr.strftime('%H:%M')}\n"
+                        f"──────────────────────\n"
+                        f"📈 **الربح:** {total_wins}\n"
+                        f"📉 **الخساره:** {total_losses}\n"
+                        f"🎯 **الإجمالي الكلي:** {total_wins + total_losses} صفقات"
+                    )
+                    send_telegram_photo(result_chart_img, caption=result_msg)
+                    time.sleep(30)
                 
-            end_tr = get_turkey_time()
-            result_chart_img = generate_chart_image(df_end, f"Result: {res_text}")
-            
-            result_msg = (
-                f"🏁 **تقرير نتيجة الصفقة**\n"
-                f"──────────────────────\n"
-                f"النتيجة: {res_text}\n"
-                f"📍 سعر الفتح: {current_price:.5f}\n"
-                f"📍 سعر الإغلاق: {end_price:.5f}\n"
-                f"⏰ وقت الانتهاء: {end_tr.strftime('%H:%M')}\n"
-                f"──────────────────────\n"
-                f"📈 **الربح:** {total_wins}\n"
-                f"📉 **الخساره:** {total_losses}\n"
-                f"🎯 **الإجمالي الكلي:** {total_wins + total_losses} صفقات"
-            )
-            send_telegram_photo(result_chart_img, caption=result_msg)
-            
-            time.sleep(60)
+                time.sleep(15) # فاصل زمني بسيط بين فحص الأزواج
+                
+            time.sleep(20)
             
         except Exception as e:
             logging.error(f"Error in main loop: {e}")
